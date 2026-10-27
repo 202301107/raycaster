@@ -136,10 +136,49 @@ void drawMinimap(Renderer& renderer, const Map& map, const Player& player) {
     }
 }
 
+// Flat base color per wall value. Side-based shading is added in Milestone 7.
+std::uint32_t wallBaseColor(int value) {
+    switch (value) {
+        case 1:  return packColor(160, 60, 60);    // red
+        case 2:  return packColor(60, 160, 70);    // green
+        case 3:  return packColor(70, 90, 180);    // blue
+        case 4:  return packColor(180, 165, 60);   // yellow
+        case 5:  return packColor(150, 70, 160);   // purple
+        default: return packColor(150, 150, 150);  // gray
+    }
+}
+
+// Cast one ray per screen column and draw its wall slice.
+void renderWalls(Renderer& renderer, const Map& map, const Player& player) {
+    const int w = renderer.width();
+    const int h = renderer.height();
+
+    for (int x = 0; x < w; ++x) {
+        // Map the column to camera space [-1, +1] and build the ray.
+        const double cameraX = 2.0 * x / w - 1.0;
+        const double rayDirX = player.dirX + player.planeX * cameraX;
+        const double rayDirY = player.dirY + player.planeY * cameraX;
+
+        RayHit hit = castRay(map, player.posX, player.posY, rayDirX, rayDirY);
+
+        // Guard against division by ~0 (player exactly on a cell seam).
+        double perpDist = hit.perpDist;
+        if (perpDist < 1e-6) perpDist = 1e-6;
+
+        // Similar-triangles projection: closer wall -> taller slice.
+        const int lineHeight = static_cast<int>(h / perpDist);
+        const int drawStart = h / 2 - lineHeight / 2;
+        const int drawEnd = h / 2 + lineHeight / 2;  // drawVerticalLine clips
+
+        renderer.drawVerticalLine(x, drawStart, drawEnd,
+                                  wallBaseColor(hit.wallValue));
+    }
+}
+
 void render(Renderer& renderer, const Map& map, const Player& player,
             bool showMinimap) {
     drawBackground(renderer);
-    // (walls come in Milestone 5/6; the camera is ready)
+    renderWalls(renderer, map, player);
     if (showMinimap) drawMinimap(renderer, map, player);
     renderer.present();
 }
