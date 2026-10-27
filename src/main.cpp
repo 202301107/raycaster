@@ -13,6 +13,12 @@
 #include "Raycaster.h"
 #include "Renderer.h"
 #include "Text.h"
+#include "Texture.h"
+
+#include <SDL_image.h>
+
+#include <string>
+#include <vector>
 
 namespace {
 
@@ -160,8 +166,48 @@ std::uint32_t darkenColor(std::uint32_t c, double factor) {
     return packColor(r, g, b);
 }
 
-// Cast one ray per screen column and draw its wall slice.
-void renderWalls(Renderer& renderer, const Map& map, const Player& player) {
+// Draw one textured wall slice. `texPos` is seeded from the UNCLIPPED slice top
+// so that when the top runs off-screen the visible rows still sample the right
+// part of the texture.
+void drawTexturedSlice(Renderer& renderer, const Texture& tex, int x,
+                       int lineHeight, double wallX, int side,
+                       bool rayDirXPos, bool rayDirYNeg) {
+    const int h = renderer.height();
+
+    // Texture column from the fractional position along the wall face.
+    int texX = static_cast<int>(wallX * tex.width);
+    // Flip so faces seen from the far side aren't mirrored.
+    if ((side == 0 && rayDirXPos) || (side == 1 && rayDirYNeg))
+        texX = tex.width - texX - 1;
+    if (texX < 0) texX = 0;
+    if (texX >= tex.width) texX = tex.width - 1;
+
+    const int drawStart = h / 2 - lineHeight / 2;
+    const int drawEnd = h / 2 + lineHeight / 2;
+    const double step = static_cast<double>(tex.height) / lineHeight;
+    double texPos = (drawStart - h / 2 + lineHeight / 2) * step;
+
+    int y0 = drawStart < 0 ? 0 : drawStart;
+    int y1 = drawEnd >= h ? h - 1 : drawEnd;
+    texPos += step * (y0 - drawStart);  // skip clipped rows
+
+    const double shade = (side == 1) ? 0.65 : 1.0;  // Milestone 7 shading
+    for (int y = y0; y <= y1; ++y) {
+        int texY = static_cast<int>(texPos);
+        if (texY < 0) texY = 0;
+        if (texY >= tex.height) texY = tex.height - 1;
+        texPos += step;
+
+        std::uint32_t c = tex.at(texX, texY);
+        if (side == 1) c = darkenColor(c, shade);
+        renderer.setPixel(x, y, c);
+    }
+}
+
+// Cast one ray per screen column and draw its wall slice (textured if a texture
+// is available for the hit value, otherwise flat shaded color).
+void renderWalls(Renderer& renderer, const Map& map, const Player& player,
+                 const std::vector<Texture>& textures) {
     const int w = renderer.width();
     const int h = renderer.height();
 
@@ -179,22 +225,33 @@ void renderWalls(Renderer& renderer, const Map& map, const Player& player) {
 
         // Similar-triangles projection: closer wall -> taller slice.
         const int lineHeight = static_cast<int>(h / perpDist);
-        const int drawStart = h / 2 - lineHeight / 2;
-        const int drawEnd = h / 2 + lineHeight / 2;  // drawVerticalLine clips
 
-        // Side-based shading: N/S-facing walls (side 1) drawn dimmer to fake
-        // directional light and make corners read.
-        std::uint32_t color = wallBaseColor(hit.wallValue);
-        if (hit.side == 1) color = darkenColor(color, 0.65);
+        const bool textured =
+            hit.wallValue >= 0 &&
+            static_cast<std::size_t>(hit.wallValue) < textures.size() &&
+            textures[hit.wallValue].valid();
 
-        renderer.drawVerticalLine(x, drawStart, drawEnd, color);
+        if (textured) {
+            // Fractional position along the wall face -> texture column.
+            double wallX = (hit.side == 0) ? player.posY + perpDist * rayDirY
+                                           : player.posX + perpDist * rayDirX;
+            wallX -= std::floor(wallX);
+            drawTexturedSlice(renderer, textures[hit.wallValue], x, lineHeight,
+                              wallX, hit.side, rayDirX > 0, rayDirY < 0);
+        } else {
+            std::uint32_t color = wallBaseColor(hit.wallValue);
+            if (hit.side == 1) color = darkenColor(color, 0.65);
+            const int drawStart = h / 2 - lineHeight / 2;
+            const int drawEnd = h / 2 + lineHeight / 2;
+            renderer.drawVerticalLine(x, drawStart, drawEnd, color);
+        }
     }
 }
 
 void render(Renderer& renderer, const Map& map, const Player& player,
-            bool showMinimap, double fps) {
+            const std::vector<Texture>& textures, bool showMinimap, double fps) {
     drawBackground(renderer);
-    renderWalls(renderer, map, player);
+    renderWalls(renderer, map, player, textures);
     if (showMinimap) drawMinimap(renderer, map, player);
 
     char buf[32];
@@ -240,6 +297,16 @@ int main(int /*argc*/, char* /*argv*/[]) {
     const Map map = Map::createDefault();
     Player player = makeDefaultPlayer();
     bool showMinimap = true;
+
+    // Load wall textures (indexed by map cell value) via SDL2_image. The asset
+    // directory is baked in at build time; override with RAYCASTER_ASSETS. If a
+    // texture is missing, that wall value falls back to flat color.
+    IMG_Init(IMG_INIT_PNG);
+    const char* assetEnv = std::getenv("RAYCASTER_ASSETS");
+    const std::string assetDir = assetEnv ? assetEnv : RAYCASTER_ASSET_DIR;
+    std::vector<Texture> textures(6);  // values 1..5 used; index 0 unused
+    for (int v = 1; v <= 5; ++v)
+        textures[v] = loadTexture(assetDir + "/wall" + std::to_string(v) + ".png");
 
     // Relative mouse mode: hide the cursor and report motion as deltas so the
     // player can turn continuously (mouse-look). Harmless if it fails headless.
@@ -332,7 +399,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
         // Time the CPU drawing work (raycasting + framebuffer fill) on its own,
         // then present separately.
         const Uint64 r0 = SDL_GetPerformanceCounter();
-        render(framebuffer, map, player, showMinimap, displayedFps);
+        render(framebuffer, map, player, textures, showMinimap, displayedFps);
         renderTicksTotal += SDL_GetPerformanceCounter() - r0;
         framebuffer.present();
 
@@ -366,6 +433,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
             renderMs, 1000.0 / renderMs);
     }
 
+    IMG_Quit();
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     return 0;

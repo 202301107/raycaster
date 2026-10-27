@@ -17,6 +17,10 @@ endif()
 # Ubuntu's libsdl2-dev ships CMake config files, so find_package works directly.
 find_package(SDL2 REQUIRED)
 
+# SDL2_image has no CMake config module here, so locate it via pkg-config.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SDL2_IMAGE REQUIRED IMPORTED_TARGET SDL2_image)
+
 # --- Target ------------------------------------------------------------------
 add_executable(raycaster
     src/main.cpp
@@ -25,10 +29,15 @@ add_executable(raycaster
     src/Player.cpp
     src/Raycaster.cpp
     src/Text.cpp
+    src/Texture.cpp
 )
 
 target_include_directories(raycaster PRIVATE src)
-target_link_libraries(raycaster PRIVATE SDL2::SDL2 SDL2::SDL2main)
+target_link_libraries(raycaster PRIVATE SDL2::SDL2 SDL2::SDL2main PkgConfig::SDL2_IMAGE)
+
+# Absolute path to bundled wall textures, overridable at runtime with RAYCASTER_ASSETS.
+target_compile_definitions(raycaster PRIVATE
+    RAYCASTER_ASSET_DIR="${CMAKE_SOURCE_DIR}/assets")
 
 # Warnings on: this is a learning project, so surface everything.
 target_compile_options(raycaster PRIVATE -Wall -Wextra)
