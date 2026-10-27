@@ -43,6 +43,11 @@ public:
     // Fill an axis-aligned rectangle; clipped to the framebuffer.
     void fillRect(int x, int y, int w, int h, std::uint32_t color);
 
+    // Fill full rows yTop..yBottom (inclusive) with one color. This spans whole
+    // rows, so the region is contiguous in memory and fills sequentially (one
+    // cache line at a time) — far faster than the equivalent column-wise fill.
+    void fillRows(int yTop, int yBottom, std::uint32_t color);
+
     // Upload the framebuffer to the GPU texture and present it to the window.
     void present();
 

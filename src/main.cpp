@@ -84,14 +84,12 @@ void update(double dt, Player& player, const Map& map, const Uint8* keys) {
 // Paint the ceiling (top half) and floor (bottom half), split at the horizon.
 // Walls will be drawn on top of this in later milestones.
 void drawBackground(Renderer& renderer) {
-    const int w = renderer.width();
     const int h = renderer.height();
     const int horizon = h / 2;
 
-    for (int x = 0; x < w; ++x) {
-        renderer.drawVerticalLine(x, 0, horizon - 1, kCeilingColor);
-        renderer.drawVerticalLine(x, horizon, h - 1, kFloorColor);
-    }
+    // Contiguous row-range fills (cache-friendly) instead of per-column spans.
+    renderer.fillRows(0, horizon - 1, kCeilingColor);
+    renderer.fillRows(horizon, h - 1, kFloorColor);
 }
 
 // Debug top-down overlay: the grid, the player's position (red) and facing

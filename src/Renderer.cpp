@@ -61,6 +61,16 @@ void Renderer::fillRect(int x, int y, int w, int h, std::uint32_t color) {
             pixels_[static_cast<std::size_t>(yy) * width_ + xx] = color;
 }
 
+void Renderer::fillRows(int yTop, int yBottom, std::uint32_t color) {
+    if (yTop < 0) yTop = 0;
+    if (yBottom >= height_) yBottom = height_ - 1;
+    if (yTop > yBottom) return;
+    // Full-width rows form one contiguous block: a single sequential fill.
+    const std::size_t begin = static_cast<std::size_t>(yTop) * width_;
+    const std::size_t end = static_cast<std::size_t>(yBottom + 1) * width_;
+    std::fill(pixels_.begin() + begin, pixels_.begin() + end, color);
+}
+
 void Renderer::present() {
     // Copy the whole framebuffer into the texture. The pitch (bytes per row) is
     // width * 4 for ARGB8888.
