@@ -148,6 +148,14 @@ std::uint32_t wallBaseColor(int value) {
     }
 }
 
+// Scale each color channel by `factor` (0..1) to darken a wall slice.
+std::uint32_t darkenColor(std::uint32_t c, double factor) {
+    const auto r = static_cast<std::uint8_t>(((c >> 16) & 0xFF) * factor);
+    const auto g = static_cast<std::uint8_t>(((c >> 8) & 0xFF) * factor);
+    const auto b = static_cast<std::uint8_t>((c & 0xFF) * factor);
+    return packColor(r, g, b);
+}
+
 // Cast one ray per screen column and draw its wall slice.
 void renderWalls(Renderer& renderer, const Map& map, const Player& player) {
     const int w = renderer.width();
@@ -170,8 +178,12 @@ void renderWalls(Renderer& renderer, const Map& map, const Player& player) {
         const int drawStart = h / 2 - lineHeight / 2;
         const int drawEnd = h / 2 + lineHeight / 2;  // drawVerticalLine clips
 
-        renderer.drawVerticalLine(x, drawStart, drawEnd,
-                                  wallBaseColor(hit.wallValue));
+        // Side-based shading: N/S-facing walls (side 1) drawn dimmer to fake
+        // directional light and make corners read.
+        std::uint32_t color = wallBaseColor(hit.wallValue);
+        if (hit.side == 1) color = darkenColor(color, 0.65);
+
+        renderer.drawVerticalLine(x, drawStart, drawEnd, color);
     }
 }
 
