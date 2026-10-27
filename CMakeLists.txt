@@ -21,6 +21,7 @@ find_package(SDL2 REQUIRED)
 add_executable(raycaster
     src/main.cpp
     src/Renderer.cpp
+    src/Map.cpp
 )
 
 target_include_directories(raycaster PRIVATE src)

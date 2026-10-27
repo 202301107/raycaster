@@ -8,9 +8,15 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "Map.h"
 #include "Renderer.h"
 
 namespace {
+
+// Background colors. The screen splits at the vertical center (the horizon):
+// ceiling above, floor below.
+const std::uint32_t kCeilingColor = packColor(48, 48, 64);   // dim blue-gray
+const std::uint32_t kFloorColor = packColor(72, 64, 56);     // dim brown
 
 // Set from a signal handler when the user hits Ctrl-C (SIGINT) or the process
 // is asked to terminate (SIGTERM). A handler may only touch a volatile
@@ -52,30 +58,22 @@ void update(double /*dt*/) {
     // (nothing to simulate yet)
 }
 
-// TEMPORARY Milestone-2 demo: prove the vertical-line helper works by drawing
-// variable-height color bars across the screen. Replaced by the raycaster in
-// later milestones.
-void render(Renderer& renderer) {
-    renderer.clear(packColor(24, 24, 32));  // dark background
-
+// Paint the ceiling (top half) and floor (bottom half), split at the horizon.
+// Walls will be drawn on top of this in later milestones.
+void drawBackground(Renderer& renderer) {
     const int w = renderer.width();
     const int h = renderer.height();
-    const int cy = h / 2;
+    const int horizon = h / 2;
 
     for (int x = 0; x < w; ++x) {
-        // Height sweeps smoothly across the screen so we can see clipping at
-        // the extremes and correct per-column fills everywhere.
-        const double t = static_cast<double>(x) / w;          // 0..1
-        const int half = static_cast<int>((0.1 + 0.6 * std::sin(t * 3.14159)) * h);
-
-        // Color cycles with x so adjacent columns are distinguishable.
-        const auto r = static_cast<std::uint8_t>(128 + 127 * std::sin(t * 6.283));
-        const auto g = static_cast<std::uint8_t>(128 + 127 * std::sin(t * 6.283 + 2.0));
-        const auto b = static_cast<std::uint8_t>(128 + 127 * std::sin(t * 6.283 + 4.0));
-
-        renderer.drawVerticalLine(x, cy - half, cy + half, packColor(r, g, b));
+        renderer.drawVerticalLine(x, 0, horizon - 1, kCeilingColor);
+        renderer.drawVerticalLine(x, horizon, h - 1, kFloorColor);
     }
+}
 
+void render(Renderer& renderer, const Map& /*map*/) {
+    drawBackground(renderer);
+    // (walls come in Milestone 5/6; the map is wired in and ready)
     renderer.present();
 }
 
@@ -112,6 +110,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
     }
 
     Renderer framebuffer(renderer, kWindowWidth, kWindowHeight);
+    const Map map = Map::createDefault();
 
     // Dev/CI aid: if RAYCASTER_SCREENSHOT is set, render a single frame, dump it
     // to that PPM path, and exit. Lets us verify rendering headlessly.
@@ -159,7 +158,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
         //    motion. Unused for now, hence the cast to void.
         const double alpha = accumulator / kFixedDt;
         (void)alpha;
-        render(framebuffer);
+        render(framebuffer, map);
 
         if (screenshotPath) {
             if (!framebuffer.savePPM(screenshotPath)) {
