@@ -30,6 +30,22 @@ void Player::strafe(double dist) {
     posY += planeY * dist;
 }
 
+void Player::tryMove(const Map& map, double dx, double dy) {
+    // X axis: probe a point pushed kPlayerRadius past the target in the travel
+    // direction, so we stop a small gap short of the wall. Resolved separately
+    // from Y so a blocked axis doesn't cancel movement on the free one.
+    if (dx != 0.0) {
+        const double probeX = posX + dx + (dx > 0 ? kPlayerRadius : -kPlayerRadius);
+        if (!map.isWall(static_cast<int>(probeX), static_cast<int>(posY)))
+            posX += dx;
+    }
+    if (dy != 0.0) {
+        const double probeY = posY + dy + (dy > 0 ? kPlayerRadius : -kPlayerRadius);
+        if (!map.isWall(static_cast<int>(posX), static_cast<int>(probeY)))
+            posY += dy;
+    }
+}
+
 Player makeDefaultPlayer() {
     Player p;
     p.posX = 22.0;

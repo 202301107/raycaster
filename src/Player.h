@@ -4,6 +4,8 @@
 #ifndef RAYCASTER_PLAYER_H
 #define RAYCASTER_PLAYER_H
 
+#include "Map.h"
+
 struct Player {
     double posX, posY;      // position in world space
     double dirX, dirY;      // facing direction (unit vector)
@@ -19,7 +21,15 @@ struct Player {
 
     // Strafe sideways along the camera plane by `dist` (negative = left).
     void strafe(double dist);
+
+    // Move by world-space delta (dx, dy) with collision against the map.
+    // Resolves each axis independently so the player slides along walls, and
+    // keeps a small buffer (kRadius) between the camera and wall surfaces.
+    void tryMove(const Map& map, double dx, double dy);
 };
+
+// Keep-off distance between the player and wall surfaces (world units).
+inline constexpr double kPlayerRadius = 0.15;
 
 // Starting pose: near the east wall of the default map, facing west, 66° FOV
 // (|plane| = 0.66 with a unit dir).

@@ -63,14 +63,19 @@ struct SdlContext {
 // framerate-independent. Mouse rotation is applied once per frame in the main
 // loop instead (a mouse delta is not a rate). No collision yet — the player
 // can walk through walls until Milestone 8.
-void update(double dt, Player& player, const Uint8* keys) {
+void update(double dt, Player& player, const Map& map, const Uint8* keys) {
     const double move = kMoveSpeed * dt;
     const double rot = kRotSpeed * dt;
 
-    if (keys[SDL_SCANCODE_W]) player.moveForward(move);
-    if (keys[SDL_SCANCODE_S]) player.moveForward(-move);
-    if (keys[SDL_SCANCODE_A]) player.strafe(-move);
-    if (keys[SDL_SCANCODE_D]) player.strafe(move);
+    // Accumulate the desired world-space move from forward/back + strafe, then
+    // apply it once with collision (so diagonal input resolves correctly).
+    double dx = 0.0, dy = 0.0;
+    if (keys[SDL_SCANCODE_W]) { dx += player.dirX * move;   dy += player.dirY * move; }
+    if (keys[SDL_SCANCODE_S]) { dx -= player.dirX * move;   dy -= player.dirY * move; }
+    if (keys[SDL_SCANCODE_D]) { dx += player.planeX * move; dy += player.planeY * move; }
+    if (keys[SDL_SCANCODE_A]) { dx -= player.planeX * move; dy -= player.planeY * move; }
+    player.tryMove(map, dx, dy);
+
     if (keys[SDL_SCANCODE_LEFT]) player.rotate(rot);    // turn left (CCW)
     if (keys[SDL_SCANCODE_RIGHT]) player.rotate(-rot);  // turn right (CW)
 }
@@ -281,7 +286,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
         // 3) Drain the accumulator in fixed bites. Each update() sees kFixedDt.
         while (accumulator >= kFixedDt) {
-            update(kFixedDt, player, keys);
+            update(kFixedDt, player, map, keys);
             accumulator -= kFixedDt;
         }
 
