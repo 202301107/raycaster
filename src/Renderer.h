@@ -37,6 +37,12 @@ public:
     // so callers may pass off-screen wall extents without extra checks.
     void drawVerticalLine(int x, int yTop, int yBottom, std::uint32_t color);
 
+    // Write a single pixel; silently ignores out-of-bounds coordinates.
+    void setPixel(int x, int y, std::uint32_t color);
+
+    // Fill an axis-aligned rectangle; clipped to the framebuffer.
+    void fillRect(int x, int y, int w, int h, std::uint32_t color);
+
     // Upload the framebuffer to the GPU texture and present it to the window.
     void present();
 

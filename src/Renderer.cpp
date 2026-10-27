@@ -44,6 +44,23 @@ void Renderer::drawVerticalLine(int x, int yTop, int yBottom,
     }
 }
 
+void Renderer::setPixel(int x, int y, std::uint32_t color) {
+    if (x < 0 || x >= width_ || y < 0 || y >= height_) return;
+    pixels_[static_cast<std::size_t>(y) * width_ + x] = color;
+}
+
+void Renderer::fillRect(int x, int y, int w, int h, std::uint32_t color) {
+    int x0 = x < 0 ? 0 : x;
+    int y0 = y < 0 ? 0 : y;
+    int x1 = x + w;
+    int y1 = y + h;
+    if (x1 > width_) x1 = width_;
+    if (y1 > height_) y1 = height_;
+    for (int yy = y0; yy < y1; ++yy)
+        for (int xx = x0; xx < x1; ++xx)
+            pixels_[static_cast<std::size_t>(yy) * width_ + xx] = color;
+}
+
 void Renderer::present() {
     // Copy the whole framebuffer into the texture. The pitch (bytes per row) is
     // width * 4 for ARGB8888.
