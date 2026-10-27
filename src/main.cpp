@@ -3,8 +3,12 @@
 
 #include <SDL.h>
 
+#include <cmath>
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
+
+#include "Renderer.h"
 
 namespace {
 
@@ -48,12 +52,31 @@ void update(double /*dt*/) {
     // (nothing to simulate yet)
 }
 
-// Draw one frame. For now, just clear to a dark color so we can see the window
-// is alive and being redrawn.
-void render(SDL_Renderer* renderer) {
-    SDL_SetRenderDrawColor(renderer, 24, 24, 32, 255);
-    SDL_RenderClear(renderer);
-    SDL_RenderPresent(renderer);
+// TEMPORARY Milestone-2 demo: prove the vertical-line helper works by drawing
+// variable-height color bars across the screen. Replaced by the raycaster in
+// later milestones.
+void render(Renderer& renderer) {
+    renderer.clear(packColor(24, 24, 32));  // dark background
+
+    const int w = renderer.width();
+    const int h = renderer.height();
+    const int cy = h / 2;
+
+    for (int x = 0; x < w; ++x) {
+        // Height sweeps smoothly across the screen so we can see clipping at
+        // the extremes and correct per-column fills everywhere.
+        const double t = static_cast<double>(x) / w;          // 0..1
+        const int half = static_cast<int>((0.1 + 0.6 * std::sin(t * 3.14159)) * h);
+
+        // Color cycles with x so adjacent columns are distinguishable.
+        const auto r = static_cast<std::uint8_t>(128 + 127 * std::sin(t * 6.283));
+        const auto g = static_cast<std::uint8_t>(128 + 127 * std::sin(t * 6.283 + 2.0));
+        const auto b = static_cast<std::uint8_t>(128 + 127 * std::sin(t * 6.283 + 4.0));
+
+        renderer.drawVerticalLine(x, cy - half, cy + half, packColor(r, g, b));
+    }
+
+    renderer.present();
 }
 
 }  // namespace
@@ -87,6 +110,12 @@ int main(int /*argc*/, char* /*argv*/[]) {
         SDL_DestroyWindow(window);
         return 1;
     }
+
+    Renderer framebuffer(renderer, kWindowWidth, kWindowHeight);
+
+    // Dev/CI aid: if RAYCASTER_SCREENSHOT is set, render a single frame, dump it
+    // to that PPM path, and exit. Lets us verify rendering headlessly.
+    const char* screenshotPath = std::getenv("RAYCASTER_SCREENSHOT");
 
     // --- Fixed-timestep loop state ------------------------------------------
     // SDL_GetPerformanceCounter() is a high-resolution monotonic tick count;
@@ -130,7 +159,15 @@ int main(int /*argc*/, char* /*argv*/[]) {
         //    motion. Unused for now, hence the cast to void.
         const double alpha = accumulator / kFixedDt;
         (void)alpha;
-        render(renderer);
+        render(framebuffer);
+
+        if (screenshotPath) {
+            if (!framebuffer.savePPM(screenshotPath)) {
+                std::fprintf(stderr, "Failed to write screenshot: %s\n",
+                             screenshotPath);
+            }
+            running = false;  // one frame then quit
+        }
     }
 
     SDL_DestroyRenderer(renderer);
