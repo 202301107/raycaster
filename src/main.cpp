@@ -12,6 +12,7 @@
 #include "Player.h"
 #include "Raycaster.h"
 #include "Renderer.h"
+#include "Text.h"
 
 namespace {
 
@@ -193,11 +194,16 @@ void renderWalls(Renderer& renderer, const Map& map, const Player& player) {
 }
 
 void render(Renderer& renderer, const Map& map, const Player& player,
-            bool showMinimap) {
+            bool showMinimap, double fps) {
     drawBackground(renderer);
     renderWalls(renderer, map, player);
     if (showMinimap) drawMinimap(renderer, map, player);
-    renderer.present();
+
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "FPS %d", static_cast<int>(fps + 0.5));
+    drawText(renderer, buf, renderer.width() - 140, 10, 4, packColor(255, 255, 0));
+    // Note: present() is called by the caller so render() CPU cost can be timed
+    // separately from the GPU/compositor present.
 }
 
 }  // namespace
@@ -249,6 +255,21 @@ int main(int /*argc*/, char* /*argv*/[]) {
     // to that PPM path, and exit. Lets us verify rendering headlessly.
     const char* screenshotPath = std::getenv("RAYCASTER_SCREENSHOT");
 
+    // Benchmark mode: run the real render loop for N seconds (minimap off to
+    // isolate the wall raycaster), then print the average FPS and exit.
+    const char* benchEnv = std::getenv("RAYCASTER_BENCH_SECONDS");
+    const double benchSeconds = benchEnv ? std::atof(benchEnv) : 0.0;
+    if (benchSeconds > 0.0) showMinimap = false;
+
+    // FPS tracking: `displayedFps` is a short rolling average for the readout;
+    // session totals drive the baseline average printed on exit.
+    double displayedFps = 0.0;
+    double fpsWindowTime = 0.0;
+    int fpsWindowFrames = 0;
+    long long sessionFrames = 0;
+    Uint64 renderTicksTotal = 0;  // CPU time in render(), excluding present wait
+    const Uint64 sessionStartTicks = SDL_GetPerformanceCounter();
+
     // --- Fixed-timestep loop state ------------------------------------------
     // SDL_GetPerformanceCounter() is a high-resolution monotonic tick count;
     // dividing a delta by the frequency gives seconds.
@@ -268,6 +289,16 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
         if (frameTime > kMaxFrameTime) frameTime = kMaxFrameTime;  // spiral guard
         accumulator += frameTime;
+
+        // FPS bookkeeping. Rolling 0.25s window for the on-screen number.
+        ++sessionFrames;
+        fpsWindowTime += frameTime;
+        ++fpsWindowFrames;
+        if (fpsWindowTime >= 0.25) {
+            displayedFps = fpsWindowFrames / fpsWindowTime;
+            fpsWindowTime = 0.0;
+            fpsWindowFrames = 0;
+        }
 
         // 2) Input / window events, once per rendered frame. Mouse motion is
         //    accumulated here and applied once below (a delta, not a rate).
@@ -299,7 +330,13 @@ int main(int /*argc*/, char* /*argv*/[]) {
         //    motion. Unused for now, hence the cast to void.
         const double alpha = accumulator / kFixedDt;
         (void)alpha;
-        render(framebuffer, map, player, showMinimap);
+
+        // Time the CPU drawing work (raycasting + framebuffer fill) on its own,
+        // then present separately.
+        const Uint64 r0 = SDL_GetPerformanceCounter();
+        render(framebuffer, map, player, showMinimap, displayedFps);
+        renderTicksTotal += SDL_GetPerformanceCounter() - r0;
+        framebuffer.present();
 
         if (screenshotPath) {
             if (!framebuffer.savePPM(screenshotPath)) {
@@ -308,6 +345,27 @@ int main(int /*argc*/, char* /*argv*/[]) {
             }
             running = false;  // one frame then quit
         }
+
+        // In benchmark mode, stop after the requested duration.
+        const double sessionElapsed =
+            static_cast<double>(SDL_GetPerformanceCounter() - sessionStartTicks) /
+            perfFreq;
+        if (benchSeconds > 0.0 && sessionElapsed >= benchSeconds) running = false;
+    }
+
+    // Baseline average FPS over the whole session.
+    const double sessionSeconds =
+        static_cast<double>(SDL_GetPerformanceCounter() - sessionStartTicks) /
+        perfFreq;
+    if (sessionSeconds > 0.0 && sessionFrames > 0) {
+        const double renderMs =
+            1000.0 * (static_cast<double>(renderTicksTotal) / perfFreq) /
+            sessionFrames;
+        std::printf(
+            "Baseline average: %.1f FPS whole-frame (%lld frames in %.2fs)\n"
+            "  render-only CPU: %.3f ms/frame  (%.0f FPS equivalent)\n",
+            sessionFrames / sessionSeconds, sessionFrames, sessionSeconds,
+            renderMs, 1000.0 / renderMs);
     }
 
     SDL_DestroyRenderer(renderer);
