@@ -23,6 +23,7 @@ add_executable(raycaster
     src/Renderer.cpp
     src/Map.cpp
     src/Player.cpp
+    src/Raycaster.cpp
 )
 
 target_include_directories(raycaster PRIVATE src)

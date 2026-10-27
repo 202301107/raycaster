@@ -10,6 +10,7 @@
 
 #include "Map.h"
 #include "Player.h"
+#include "Raycaster.h"
 #include "Renderer.h"
 
 namespace {
@@ -102,6 +103,23 @@ void drawMinimap(Renderer& renderer, const Map& map, const Player& player) {
             const std::uint32_t c = map.isWall(x, y) ? packColor(200, 200, 210)
                                                      : packColor(40, 40, 48);
             renderer.fillRect(ox + x * cell, oy + y * cell, cell - 1, cell - 1, c);
+        }
+    }
+
+    // Draw a fan of cast rays so we can see DDA at work: each ray is drawn from
+    // the player to the wall it hits (hit point = pos + perpDist * rayDir).
+    constexpr int kFanRays = 60;
+    for (int i = 0; i < kFanRays; ++i) {
+        const double cameraX = 2.0 * i / (kFanRays - 1) - 1.0;  // -1..+1
+        const double rayDirX = player.dirX + player.planeX * cameraX;
+        const double rayDirY = player.dirY + player.planeY * cameraX;
+        const RayHit hit = castRay(map, player.posX, player.posY, rayDirX, rayDirY);
+
+        // Sample points along the ray up to the hit distance.
+        for (double t = 0.0; t < hit.perpDist; t += 0.08) {
+            const int rx = ox + static_cast<int>((player.posX + rayDirX * t) * cell);
+            const int ry = oy + static_cast<int>((player.posY + rayDirY * t) * cell);
+            renderer.setPixel(rx, ry, packColor(70, 130, 70));  // dim green ray
         }
     }
 
