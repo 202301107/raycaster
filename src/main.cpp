@@ -3,9 +3,18 @@
 
 #include <SDL.h>
 
+#include <csignal>
 #include <cstdio>
 
 namespace {
+
+// Set from a signal handler when the user hits Ctrl-C (SIGINT) or the process
+// is asked to terminate (SIGTERM). A handler may only touch a volatile
+// sig_atomic_t safely, so we just flip this flag and react in the main loop,
+// exercising the exact same clean-shutdown path as closing the window.
+volatile std::sig_atomic_t g_quitRequested = 0;
+
+extern "C" void handleTerminationSignal(int /*signo*/) { g_quitRequested = 1; }
 
 constexpr int kWindowWidth = 1024;
 constexpr int kWindowHeight = 768;
@@ -50,6 +59,9 @@ void render(SDL_Renderer* renderer) {
 }  // namespace
 
 int main(int /*argc*/, char* /*argv*/[]) {
+    std::signal(SIGINT, handleTerminationSignal);
+    std::signal(SIGTERM, handleTerminationSignal);
+
     SdlContext sdl(SDL_INIT_VIDEO);
     if (!sdl.ok) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
@@ -85,6 +97,8 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
     bool running = true;
     while (running) {
+        if (g_quitRequested) running = false;  // Ctrl-C / SIGTERM → clean exit
+
         // 1) Measure real time elapsed since the previous frame.
         const Uint64 currentTicks = SDL_GetPerformanceCounter();
         double frameTime =
